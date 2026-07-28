@@ -1,0 +1,117 @@
+<idea-plugin>
+    <id>dev.serverpod.idea</id>
+    <name>Serverpod</name>
+    <vendor>Serverpod IDEA Plugin</vendor>
+
+    <description><![CDATA[
+        Create and manage <a href="https://serverpod.dev">Serverpod</a> projects from IntelliJ IDEA.
+        <ul>
+            <li>Create a Serverpod workspace from the New Project wizard, choosing between the
+                <code>server</code>, <code>mini</code>, and <code>module</code> templates.</li>
+            <li>Run <code>serverpod generate</code> and create database migrations without leaving the IDE.</li>
+            <li>Start and stop the bundled PostgreSQL and Redis containers with Docker Compose.</li>
+            <li>Launch the server through a dedicated run configuration with run mode and migration options.</li>
+            <li>See the state of the whole workspace in the Serverpod tool window.</li>
+        </ul>
+        Requires the Serverpod CLI to be installed locally.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <!--
+      A Serverpod workspace is Dart all the way through, and the default template
+      also generates a Flutter app. Without these the IDE would open the generated
+      project with no analysis, so they are required rather than optional.
+    -->
+    <depends>Dart</depends>
+    <depends>io.flutter</depends>
+
+    <resource-bundle>messages.ServerpodBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="Serverpod"
+                           displayType="BALLOON"
+                           bundle="messages.ServerpodBundle"
+                           key="notification.group.name"/>
+
+        <applicationConfigurable id="dev.serverpod.idea.settings"
+                                 parentId="tools"
+                                 displayName="Serverpod"
+                                 instance="dev.serverpod.idea.settings.ServerpodConfigurable"/>
+
+        <postStartupActivity implementation="dev.serverpod.idea.project.ServerpodStartupActivity"/>
+
+        <newProjectWizard.generator implementation="dev.serverpod.idea.wizard.ServerpodNewProjectWizard"/>
+
+        <configurationType implementation="dev.serverpod.idea.run.ServerpodRunConfigurationType"/>
+
+        <toolWindow id="Serverpod"
+                    anchor="bottom"
+                    icon="dev.serverpod.idea.ServerpodIcons.ToolWindow"
+                    factoryClass="dev.serverpod.idea.toolwindow.ServerpodToolWindowFactory"/>
+    </extensions>
+
+    <actions>
+        <group id="Serverpod.MainGroup"
+               class="dev.serverpod.idea.actions.ServerpodActionGroup"
+               text="Serverpod"
+               description="Serverpod project commands"
+               icon="dev.serverpod.idea.ServerpodIcons.Logo"
+               popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+
+            <action id="Serverpod.RunServer"
+                    class="dev.serverpod.idea.actions.RunServerAction"
+                    text="Run Server"
+                    description="Start the Serverpod server using its run configuration"
+                    icon="AllIcons.RunConfigurations.TestState.Run"/>
+
+            <separator/>
+
+            <action id="Serverpod.Generate"
+                    class="dev.serverpod.idea.actions.GenerateAction"
+                    text="Generate Code"
+                    description="Run serverpod generate to update the client and serialization code"
+                    icon="AllIcons.Actions.Refresh"/>
+
+            <separator/>
+
+            <action id="Serverpod.CreateMigration"
+                    class="dev.serverpod.idea.actions.CreateMigrationAction"
+                    text="Create Migration"
+                    description="Create a database migration from the current model state"
+                    icon="AllIcons.Actions.AddList"/>
+
+            <action id="Serverpod.CreateRepairMigration"
+                    class="dev.serverpod.idea.actions.CreateRepairMigrationAction"
+                    text="Create Repair Migration"
+                    description="Compare the target state to the live database and create a repair migration"
+                    icon="AllIcons.Actions.IntentionBulb"/>
+
+            <separator/>
+
+            <action id="Serverpod.DockerUp"
+                    class="dev.serverpod.idea.actions.DockerUpAction"
+                    text="Start Docker Containers"
+                    description="Run docker compose up --detach for PostgreSQL and Redis"
+                    icon="AllIcons.Actions.Execute"/>
+
+            <action id="Serverpod.DockerDown"
+                    class="dev.serverpod.idea.actions.DockerDownAction"
+                    text="Stop Docker Containers"
+                    description="Run docker compose down"
+                    icon="AllIcons.Actions.Suspend"/>
+
+            <action id="Serverpod.ResetDatabase"
+                    class="dev.serverpod.idea.actions.ResetDatabaseAction"
+                    text="Reset Database Containers…"
+                    description="Delete the database volumes and recreate the containers, discarding all local data"
+                    icon="AllIcons.Actions.Restart"/>
+        </group>
+    </actions>
+
+    <projectListeners>
+        <listener class="dev.serverpod.idea.project.ServerpodVfsListener"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </projectListeners>
+</idea-plugin>
