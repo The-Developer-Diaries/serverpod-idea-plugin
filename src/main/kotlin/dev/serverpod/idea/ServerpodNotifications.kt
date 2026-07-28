@@ -1,5 +1,6 @@
 package dev.serverpod.idea
 
+import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -20,6 +21,24 @@ object ServerpodNotifications {
 
     fun error(project: Project?, title: String, content: String) =
         notify(project, title, content, NotificationType.ERROR)
+
+    /** A warning carrying fixes, each of which dismisses the balloon when invoked. */
+    fun actionable(
+        project: Project?,
+        title: String,
+        content: String,
+        vararg actions: Pair<String, () -> Unit>,
+    ) {
+        val notification = NotificationGroupManager.getInstance()
+            .getNotificationGroup(GROUP_ID)
+            .createNotification(title, content, NotificationType.WARNING)
+
+        actions.forEach { (text, action) ->
+            notification.addAction(NotificationAction.createSimpleExpiring(text, action))
+        }
+
+        notification.notify(project)
+    }
 
     fun missingTool(project: Project?, tool: CliTool) {
         val notification = NotificationGroupManager.getInstance()

@@ -12,11 +12,18 @@ what `serverpod create` produces on the command line.
   collapsed by default, controls whether to start the Docker containers, add a run configuration,
   apply migrations on its first run, and open `bin/main.dart`. Your choices, including whether the
   group is expanded, are remembered for the next project.
+- **Dart SDK setup.** A new project is given a module, a Dart SDK, and exclusions for build output, so
+  the code is analysed the moment the workspace opens rather than after a trip through
+  `Project Structure`. Opening a Serverpod workspace that has no SDK offers the same in one click.
 - **Tool window.** Shows the server, client, and Flutter packages, whether migrations exist, and
   whether the Docker containers are running. Every command the plugin runs streams into its console.
 - **Actions** under `Tools | Serverpod` and on the tool window toolbar: generate code, create a
   migration, create a repair migration, start or stop the Docker Compose services, and reset the
   database containers.
+- **Your own scripts.** Whatever the server package declares under `serverpod/scripts` in its
+  `pubspec.yaml` appears under `Tools | Serverpod | Run Script`, executed with `serverpod run`.
+- **Regeneration on change.** Optionally runs `serverpod generate` after a `.spy.yaml` model is saved,
+  so the generated client never lags behind the models.
 - **Run configuration.** Runs `dart run bin/main.dart` in the server package, with a run-mode selector
   and toggles for `--apply-migrations` and `--apply-repair-migration`.
 
@@ -43,7 +50,7 @@ does not reimplement any of it, and does not call their APIs — it only relies 
 | IntelliJ IDEA 2026.2 or newer | Platform APIs used by the wizard | build 262+ |
 | Serverpod CLI | Project creation, code generation, migrations | `dart pub global activate serverpod_cli` |
 | Dart SDK | Running the server | Bundled with Flutter |
-| Flutter SDK | The generated Flutter app | Only reported, never invoked |
+| Flutter SDK | The generated Flutter app | Never invoked, but its bundled Dart SDK is what gets registered |
 | Docker | PostgreSQL and Redis for local development | Only for the `server` template |
 
 The plugin looks for each executable in this order: the path set in `Settings | Tools | Serverpod`,
@@ -75,6 +82,33 @@ searches, so it works straight away even if that directory is not on your `PATH`
 edit your shell profile — add `~/.pub-cache/bin` to `PATH` yourself if you also want `serverpod` in a
 terminal.
 
+## Keeping generated code current
+
+Editing a `.spy.yaml` model leaves the generated client and serialization code stale until
+`serverpod generate` runs. The plugin points this out the first time it happens in a session, and
+`Settings | Tools | Serverpod` has a `Regenerate when a model file changes` option to have it handled
+for you.
+
+Regeneration is off by default because it starts a process on every save. When enabled, saves are
+coalesced so a batch of edits produces one run, and a change arriving mid-run is deferred rather than
+started alongside it, since two concurrent runs would write the same files.
+
+## Running your own scripts
+
+The server package can declare scripts in its `pubspec.yaml`, which the generated project already
+uses:
+
+```yaml
+serverpod:
+  scripts:
+    start: dart bin/main.dart --apply-migrations
+    test: dart test
+```
+
+Each one appears under `Tools | Serverpod | Run Script` and is executed with `serverpod run <name>`,
+so the CLI keeps ownership of shell selection and of per-platform script variants. The menu is built
+from the file, so adding a script is enough to make it appear.
+
 ## Building
 
 ```bash
@@ -87,7 +121,7 @@ The installable ZIP lands in `build/distributions/`. Install it with
 ## Development
 
 ```bash
-./gradlew test      # unit tests for layout detection and package naming
+./gradlew test      # layout detection, script parsing, package naming, version parsing
 ./gradlew runIde    # launches a sandbox IDE with the plugin loaded
 ```
 
@@ -99,6 +133,11 @@ workspace:
 ```
 
 Building requires JDK 25, because IntelliJ IDEA 2026.2 is itself built with Java 25.
+
+The target platform is stated once, as `platformVersion` in `gradle.properties`. Everything else follows
+from it: the plugin's `since-build` floor, and the Dart and Flutter releases resolved for the sandbox.
+Moving to an older platform would also mean lowering `jvmToolchain` to match that release's Java
+version.
 
 ## How project creation works
 

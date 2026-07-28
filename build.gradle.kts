@@ -18,12 +18,12 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        intellijIdea("2026.2")
+        intellijIdea(providers.gradleProperty("platformVersion"))
 
         // Declared as required in plugin.xml, so the sandbox and the verifier both
-        // need them present. These are the releases that support build 262.
-        plugin("Dart", "507.0.0")
-        plugin("io.flutter", "94.0.0")
+        // need them present. Versions come from the Marketplace API against the
+        // platform above, so a platform bump does not need matching pins here.
+        compatiblePlugins("Dart", "io.flutter")
     }
 
     // The BOM keeps the Jupiter API and the platform launcher on one version.
@@ -48,8 +48,9 @@ intellijPlatform {
         version = project.version.toString()
 
         ideaVersion {
-            sinceBuild = "262"
-            // Left open so the plugin stays compatible with future builds.
+            // since-build defaults to the major build of the platform above, so
+            // restating it here would only be a second copy to forget to update.
+            // Left open at the top so the plugin survives future builds.
             untilBuild = provider { null }
         }
     }

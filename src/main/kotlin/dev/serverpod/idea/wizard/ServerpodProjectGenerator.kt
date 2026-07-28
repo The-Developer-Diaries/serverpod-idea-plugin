@@ -14,6 +14,7 @@ import dev.serverpod.idea.cli.CliTool
 import dev.serverpod.idea.cli.ServerpodCommand
 import dev.serverpod.idea.cli.ServerpodCommandRunner
 import dev.serverpod.idea.cli.ServerpodConsoleService
+import dev.serverpod.idea.project.ServerpodDartSupport
 import dev.serverpod.idea.project.ServerpodLayout
 import dev.serverpod.idea.project.ServerpodProjectService
 import dev.serverpod.idea.run.ServerpodRunConfigurations
@@ -130,6 +131,20 @@ object ServerpodProjectGenerator {
                 ConsoleViewContentType.ERROR_OUTPUT,
             )
             return
+        }
+
+        // Before anything else, because the wizard leaves the project without a
+        // module and nothing here is analysed until one exists.
+        indicator.text = "Configuring the Dart SDK"
+        when (val dart = ServerpodDartSupport.configure(project, layout)) {
+            is ServerpodDartSupport.Result.Configured ->
+                console.println(ServerpodDartSupport.describe(dart), ConsoleViewContentType.SYSTEM_OUTPUT)
+
+            ServerpodDartSupport.Result.NoSdkFound -> console.println(
+                "No Dart SDK was found, so the project has none configured. " +
+                    "Set the Dart or Flutter path in Settings | Tools | Serverpod.",
+                ConsoleViewContentType.ERROR_OUTPUT,
+            )
         }
 
         if (request.createRunConfiguration) {

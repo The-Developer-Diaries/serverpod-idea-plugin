@@ -66,6 +66,12 @@
                     description="Start the Serverpod server using its run configuration"
                     icon="AllIcons.RunConfigurations.TestState.Run"/>
 
+            <group id="Serverpod.Scripts"
+                   class="dev.serverpod.idea.actions.ServerpodScriptsActionGroup"
+                   text="Run Script"
+                   description="Run a script from the serverpod/scripts section of pubspec.yaml"
+                   popup="true"/>
+
             <separator/>
 
             <action id="Serverpod.Generate"

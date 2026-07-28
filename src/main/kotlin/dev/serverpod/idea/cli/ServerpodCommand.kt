@@ -1,6 +1,7 @@
 package dev.serverpod.idea.cli
 
 import com.intellij.execution.configurations.GeneralCommandLine
+import dev.serverpod.idea.project.ServerpodLayout
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
@@ -17,6 +18,21 @@ data class ServerpodCommand(
 
         /** Global flags that keep the CLI from blocking on prompts inside the IDE. */
         val NON_INTERACTIVE = listOf("--no-analytics", "--no-interactive")
+
+        fun generate(layout: ServerpodLayout) = ServerpodCommand(
+            title = "serverpod generate",
+            tool = CliTool.SERVERPOD,
+            workDir = layout.serverDir,
+            arguments = NON_INTERACTIVE + "generate",
+            successMessage = "Regenerated the client and serialization code.",
+        )
+
+        fun runScript(layout: ServerpodLayout, script: String) = ServerpodCommand(
+            title = "serverpod run $script",
+            tool = CliTool.SERVERPOD,
+            workDir = layout.serverDir,
+            arguments = NON_INTERACTIVE + listOf("run", script),
+        )
 
         fun commandLine(tool: CliTool, workDir: Path, arguments: List<String>): GeneralCommandLine? {
             val executable = tool.resolve() ?: return null

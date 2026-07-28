@@ -10,6 +10,7 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.Cell
 import com.intellij.ui.dsl.builder.Row
+import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.panel
 import dev.serverpod.idea.cli.CliTool
@@ -45,6 +46,16 @@ class ServerpodConfigurable : BoundConfigurable("Serverpod") {
                 comment(
                     "Leave a field empty to look the tool up on <code>PATH</code> and in the usual install locations."
                 )
+            }
+        }
+
+        group("Code Generation") {
+            row {
+                checkBox("Regenerate when a model file changes")
+                    .bindSelected(settings::generateOnModelChange)
+                    .comment(
+                        "Runs <code>serverpod generate</code> shortly after a <code>.spy.yaml</code> file is saved."
+                    )
             }
         }
     }.also { detectVersions() }

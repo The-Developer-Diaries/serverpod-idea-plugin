@@ -16,7 +16,15 @@ class ServerpodSettings : SimplePersistentStateComponent<ServerpodSettings.State
         var dartPath by string()
         var flutterPath by string()
         var dockerPath by string()
+        var generateOnModelChange by property(false)
     }
+
+    /** Whether editing a `.spy.yaml` model should trigger `serverpod generate`. */
+    var generateOnModelChange: Boolean
+        get() = state.generateOnModelChange
+        set(value) {
+            state.generateOnModelChange = value
+        }
 
     var serverpodPath: String?
         get() = state.serverpodPath

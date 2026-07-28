@@ -19,6 +19,8 @@ data class ServerpodLayout(
     val flutterDir: Path?,
     val dockerComposeFile: Path?,
     val migrationsDir: Path?,
+    /** Script names from the server package's `serverpod/scripts` section. */
+    val scripts: List<String>,
 ) {
     val hasDocker: Boolean get() = dockerComposeFile != null
 
@@ -68,6 +70,7 @@ data class ServerpodLayout(
                     .map { serverDir.resolve(it) }
                     .firstOrNull { it.isRegularFile() },
                 migrationsDir = serverDir.resolve("migrations").takeIf { it.isDirectory() },
+                scripts = ServerpodScripts.namesIn(serverDir.resolve("pubspec.yaml")),
             )
         }
 

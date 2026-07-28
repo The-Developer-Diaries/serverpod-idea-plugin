@@ -5,28 +5,40 @@ import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 
 /**
- * Re-runs layout detection when a file that could change the workspace shape
- * appears or disappears. Most VFS traffic is irrelevant here, so the filter is
- * deliberately narrow.
+ * Watches for the two kinds of change worth reacting to: a file that could alter
+ * the workspace shape, and a model the generated code is derived from. Most VFS
+ * traffic is neither, so the filter is deliberately narrow.
  */
 class ServerpodVfsListener(private val project: Project) : BulkFileListener {
 
     override fun after(events: List<VFileEvent>) {
         val basePath = project.basePath ?: return
 
-        val relevant = events.any { event ->
+        var layoutChanged = false
+        var modelsChanged = false
+
+        for (event in events) {
             val path = event.path
-            if (!path.startsWith(basePath)) return@any false
+            if (!path.startsWith(basePath)) continue
 
-            path.endsWith("pubspec.yaml") ||
-                path.endsWith("generator.yaml") ||
-                path.endsWith("docker-compose.yaml") ||
-                path.endsWith("docker-compose.yml") ||
-                path.substringAfter(basePath).trim('/').contains('/').not()
+            if (ServerpodModelWatcher.isModelFile(path)) {
+                modelsChanged = true
+            } else if (changesLayout(path, basePath)) {
+                layoutChanged = true
+            }
+
+            if (layoutChanged && modelsChanged) break
         }
 
-        if (relevant) {
-            ServerpodProjectService.getInstance(project).scheduleRefresh()
-        }
+        if (layoutChanged) ServerpodProjectService.getInstance(project).scheduleRefresh()
+        if (modelsChanged) ServerpodModelWatcher.getInstance(project).onModelFilesChanged()
     }
+
+    private fun changesLayout(path: String, basePath: String): Boolean =
+        path.endsWith("pubspec.yaml") ||
+            path.endsWith("generator.yaml") ||
+            path.endsWith("docker-compose.yaml") ||
+            path.endsWith("docker-compose.yml") ||
+            // A direct child of the project root, so a package appearing or going away.
+            path.substringAfter(basePath).trim('/').contains('/').not()
 }

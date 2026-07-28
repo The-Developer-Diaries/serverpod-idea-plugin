@@ -71,6 +71,17 @@ class ServerpodLayoutTest {
     }
 
     @Test
+    fun `picks up the scripts declared by the server package`() {
+        val root = workspace("scripted", withDocker = false, withMigrations = false, withFlutter = false)
+        Files.writeString(
+            root.resolve("scripted_server/pubspec.yaml"),
+            "name: scripted_server\nserverpod:\n  scripts:\n    start: dart bin/main.dart\n",
+        )
+
+        assertEquals(listOf("start"), ServerpodLayout.detect(root)!!.scripts)
+    }
+
+    @Test
     fun `ignores a plain directory`() {
         assertNull(ServerpodLayout.detect(newFolder("empty")))
     }

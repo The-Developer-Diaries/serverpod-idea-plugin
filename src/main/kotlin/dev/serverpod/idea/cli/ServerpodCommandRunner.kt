@@ -22,23 +22,33 @@ object ServerpodCommandRunner {
     /**
      * Runs [command] in the background, streaming output to the Serverpod tool
      * window. [onSuccess] is invoked on a background thread only when the process
-     * exits with code 0.
+     * exits with code 0; [onFinished] always is, so a caller can release a lock.
      */
-    fun run(project: Project, command: ServerpodCommand, onSuccess: (() -> Unit)? = null) {
+    fun run(
+        project: Project,
+        command: ServerpodCommand,
+        onSuccess: (() -> Unit)? = null,
+        onFinished: ((Int) -> Unit)? = null,
+    ) {
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, command.title, true) {
             override fun run(indicator: ProgressIndicator) {
                 indicator.isIndeterminate = true
 
-                val exitCode = runSync(project, command, indicator)
-                refreshWorkspace(project)
+                var exitCode = FAILED_TO_START
+                try {
+                    exitCode = runSync(project, command, indicator)
+                    refreshWorkspace(project)
 
-                when {
-                    exitCode == 0 -> {
-                        command.successMessage?.let { ServerpodNotifications.info(project, command.title, it) }
-                        onSuccess?.invoke()
+                    when {
+                        exitCode == 0 -> {
+                            command.successMessage?.let { ServerpodNotifications.info(project, command.title, it) }
+                            onSuccess?.invoke()
+                        }
+
+                        exitCode != CANCELLED -> reportFailure(project, command, exitCode)
                     }
-
-                    exitCode != CANCELLED -> reportFailure(project, command, exitCode)
+                } finally {
+                    onFinished?.invoke(exitCode)
                 }
             }
         })
