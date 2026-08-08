@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.serverpod.idea"
-version = "0.2.0"
+version = "0.2.2"
 
 repositories {
     mavenCentral()

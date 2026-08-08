@@ -7,7 +7,6 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.startup.StartupManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import dev.serverpod.idea.ServerpodNotifications
 import dev.serverpod.idea.cli.CliTool
@@ -36,17 +35,32 @@ import kotlin.io.path.name
  */
 object ServerpodProjectGenerator {
 
+    /**
+     * Records what the wizard asked for. The CLI cannot run until the project has
+     * finished opening, so the work itself starts from [runPending].
+     */
     fun schedule(project: Project, request: ServerpodCreateRequest) {
-        StartupManager.getInstance(project).runAfterOpened {
-            ProgressManager.getInstance().run(
-                object : Task.Backgroundable(project, "Creating Serverpod project", true) {
-                    override fun run(indicator: ProgressIndicator) {
-                        indicator.isIndeterminate = true
-                        generate(project, request, indicator)
-                    }
+        ServerpodPendingCreate.getInstance(project).submit(request)
+    }
+
+    /**
+     * Starts generation for whatever the wizard recorded, reporting whether there
+     * was anything to do so the caller can skip the checks meant for an existing
+     * workspace.
+     */
+    fun runPending(project: Project): Boolean {
+        val request = ServerpodPendingCreate.getInstance(project).consume() ?: return false
+
+        ProgressManager.getInstance().run(
+            object : Task.Backgroundable(project, "Creating Serverpod project", true) {
+                override fun run(indicator: ProgressIndicator) {
+                    indicator.isIndeterminate = true
+                    generate(project, request, indicator)
                 }
-            )
-        }
+            }
+        )
+
+        return true
     }
 
     private fun generate(project: Project, request: ServerpodCreateRequest, indicator: ProgressIndicator) {
