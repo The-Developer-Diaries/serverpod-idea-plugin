@@ -18,13 +18,7 @@
 
     <depends>com.intellij.modules.platform</depends>
 
-    <!--
-      A Serverpod workspace is Dart all the way through, and the default template
-      also generates a Flutter app. Without these the IDE would open the generated
-      project with no analysis, so they are required rather than optional.
-    -->
     <depends>Dart</depends>
-    <depends>io.flutter</depends>
 
     <resource-bundle>messages.ServerpodBundle</resource-bundle>
 

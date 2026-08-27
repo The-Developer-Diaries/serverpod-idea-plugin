@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.serverpod.idea"
-version = "0.2.1"
+version = "0.2.2"
 
 repositories {
     mavenCentral()
@@ -20,10 +20,7 @@ dependencies {
     intellijPlatform {
         intellijIdea(providers.gradleProperty("platformVersion"))
 
-        // Declared as required in plugin.xml, so the sandbox and the verifier both
-        // need them present. Versions come from the Marketplace API against the
-        // platform above, so a platform bump does not need matching pins here.
-        compatiblePlugins("Dart", "io.flutter")
+        compatiblePlugins("Dart")
     }
 
     // The BOM keeps the Jupiter API and the platform launcher on one version.
