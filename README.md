@@ -31,17 +31,17 @@ what `serverpod create` produces on the command line.
 
 ### IDE plugins
 
-A Serverpod workspace is Dart from end to end, and the default template also generates a Flutter app,
-so these two are declared as required dependencies. The IDE installs them with this plugin and will not
-enable it without them:
+A Serverpod workspace is Dart from end to end. The plugin declares the official Dart plugin as its only
+required IDE dependency. `<depends>Dart</depends>` asks Marketplace to install a Dart version compatible
+with the user's IDE; it does not pin that installed version.
 
-| Plugin | ID | Version for build 262 |
+| Plugin | ID | Pinned build, sandbox, and verifier version |
 | --- | --- | --- |
-| [Dart](https://plugins.jetbrains.com/plugin/6351-dart) | `Dart` | 507.0.0 or newer |
-| [Flutter](https://plugins.jetbrains.com/plugin/9212-flutter) | `io.flutter` | 94.0.0 or newer |
+| [Dart](https://plugins.jetbrains.com/plugin/6351-dart) | `Dart` | 508.1.0 |
 
-They provide the analysis, run configurations, and SDK registration for the generated code. This plugin
-does not reimplement any of it, and does not call their APIs — it only relies on them being present.
+The Dart plugin provides analysis and SDK registration for the generated code. The Flutter IDE plugin is
+optional: install it for Flutter-specific IDE support when working on the generated Flutter app. This
+plugin neither declares nor calls the Flutter plugin.
 
 ### Tools on the machine
 
@@ -49,8 +49,8 @@ does not reimplement any of it, and does not call their APIs — it only relies 
 | --- | --- | --- |
 | IntelliJ IDEA 2026.2 or newer | Platform APIs used by the wizard | build 262+ |
 | Serverpod CLI | Project creation, code generation, migrations | `dart pub global activate serverpod_cli` |
-| Dart SDK | Running the server | Bundled with Flutter |
-| Flutter SDK | The generated Flutter app | Never invoked, but its bundled Dart SDK is what gets registered |
+| Dart SDK | Running the server | Install Dart directly or use Flutter's bundled Dart SDK |
+| Flutter SDK | The generated Flutter app | Needed only to run or develop the generated Flutter app |
 | Docker | PostgreSQL and Redis for local development | Only for the `server` template |
 
 The plugin looks for each executable in this order: the path set in `Settings | Tools | Serverpod`,
@@ -134,10 +134,13 @@ workspace:
 
 Building requires JDK 25, because IntelliJ IDEA 2026.2 is itself built with Java 25.
 
-The target platform is stated once, as `platformVersion` in `gradle.properties`. Everything else follows
-from it: the plugin's `since-build` floor, and the Dart and Flutter releases resolved for the sandbox.
-Moving to an older platform would also mean lowering `jvmToolchain` to match that release's Java
-version.
+The target platform is stated once, as `platformVersion` in `gradle.properties`. It sets the plugin's
+`since-build` floor. The direct Dart Marketplace dependency is pinned separately as
+`dartPluginVersion` for the build, sandbox, and verifier classpaths, so its SDK API contract is
+reproducible. It does not constrain the end-user Dart plugin version Marketplace selects through
+`<depends>Dart</depends>`; update the pin only after a clean verifier run. The Flutter IDE plugin is
+optional and is not resolved as a plugin dependency. Moving to an older platform would also mean
+lowering `jvmToolchain` to match that release's Java version.
 
 ## How project creation works
 

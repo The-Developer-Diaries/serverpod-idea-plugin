@@ -3,15 +3,18 @@ package dev.serverpod.idea.project
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
-import com.intellij.util.concurrency.AppExecutorUtil
 import dev.serverpod.idea.ServerpodNotifications
 import dev.serverpod.idea.cli.ServerpodCommand
 import dev.serverpod.idea.cli.ServerpodCommandRunner
 import dev.serverpod.idea.settings.ServerpodSettings
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.coroutineContext
 
 /**
  * Closes the loop between editing a model and the generated code catching up.
@@ -20,9 +23,12 @@ import java.util.concurrent.atomic.AtomicReference
  * turned on, a changed model is pointed out once per session instead.
  */
 @Service(Service.Level.PROJECT)
-class ServerpodModelWatcher(private val project: Project) {
+class ServerpodModelWatcher(
+    private val project: Project,
+    private val coroutineScope: CoroutineScope,
+) {
 
-    private val pending = AtomicReference<ScheduledFuture<*>?>(null)
+    private val pending = AtomicReference<Job?>(null)
     private val running = AtomicBoolean(false)
     private val queued = AtomicBoolean(false)
     private val prompted = AtomicBoolean(false)
@@ -40,13 +46,16 @@ class ServerpodModelWatcher(private val project: Project) {
 
     /** Saving several models at once, or a reformat, should still produce one run. */
     private fun schedule() {
-        val next = AppExecutorUtil.getAppScheduledExecutorService()
-            .schedule(::generate, DEBOUNCE_MS, TimeUnit.MILLISECONDS)
-
-        pending.getAndSet(next)?.cancel(false)
+        val next = coroutineScope.launch(start = CoroutineStart.LAZY) {
+            delay(DEBOUNCE_MS)
+            pending.compareAndSet(coroutineContext[Job], null)
+            generate()
+        }
+        pending.getAndSet(next)?.cancel()
+        next.start()
     }
 
-    private fun generate() {
+    private suspend fun generate() {
         if (project.isDisposed) return
         val layout = ServerpodProjectService.getInstance(project).layout() ?: return
 
@@ -57,14 +66,12 @@ class ServerpodModelWatcher(private val project: Project) {
             return
         }
 
-        ServerpodCommandRunner.run(
-            project,
-            ServerpodCommand.generate(layout),
-            onFinished = {
-                running.set(false)
-                if (queued.compareAndSet(true, false)) schedule()
-            },
-        )
+        try {
+            ServerpodCommandRunner.run(project, ServerpodCommand.generate(layout))
+        } finally {
+            running.set(false)
+            if (queued.compareAndSet(true, false)) schedule()
+        }
     }
 
     private fun promptOnce() {
@@ -83,8 +90,8 @@ class ServerpodModelWatcher(private val project: Project) {
     }
 
     private fun generateNow() {
-        pending.getAndSet(null)?.cancel(false)
-        generate()
+        pending.getAndSet(null)?.cancel()
+        coroutineScope.launch { generate() }
     }
 
     companion object {

@@ -110,8 +110,4 @@
         </group>
     </actions>
 
-    <projectListeners>
-        <listener class="dev.serverpod.idea.project.ServerpodVfsListener"
-                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
-    </projectListeners>
 </idea-plugin>

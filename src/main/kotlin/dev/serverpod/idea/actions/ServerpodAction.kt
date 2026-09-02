@@ -8,6 +8,7 @@ import dev.serverpod.idea.cli.ServerpodCommand
 import dev.serverpod.idea.cli.ServerpodCommandRunner
 import dev.serverpod.idea.project.ServerpodLayout
 import dev.serverpod.idea.project.ServerpodProjectService
+import kotlinx.coroutines.launch
 
 /**
  * Base for the actions that shell out to a CLI. Visibility is driven by the
@@ -26,7 +27,9 @@ abstract class ServerpodAction : AnAction(), DumbAware {
         val project = e.project ?: return
         val layout = ServerpodProjectService.layoutOf(project) ?: return
 
-        ServerpodCommandRunner.run(project, command(layout))
+        e.coroutineScope.launch {
+            ServerpodCommandRunner.run(project, command(layout))
+        }
     }
 
     protected abstract fun command(layout: ServerpodLayout): ServerpodCommand

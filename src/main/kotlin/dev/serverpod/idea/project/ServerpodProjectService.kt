@@ -1,11 +1,15 @@
 package dev.serverpod.idea.project
 
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.platform.util.coroutines.childScope
 import com.intellij.util.messages.Topic
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -14,12 +18,22 @@ import java.util.concurrent.atomic.AtomicBoolean
  * EDT callers never touch the file system.
  */
 @Service(Service.Level.PROJECT)
-class ServerpodProjectService(private val project: Project) {
+class ServerpodProjectService(
+    private val project: Project,
+    private val coroutineScope: CoroutineScope,
+) {
 
     @Volatile
     private var layout: ServerpodLayout? = null
 
     private val refreshInProgress = AtomicBoolean(false)
+
+    init {
+        VirtualFileManager.getInstance().addAsyncFileListener(
+            coroutineScope,
+            ServerpodVfsListener(project, coroutineScope),
+        )
+    }
 
     /** Non-blocking: returns the last detection result, or null before the first scan. */
     fun layout(): ServerpodLayout? = layout
@@ -45,7 +59,7 @@ class ServerpodProjectService(private val project: Project) {
         if (project.isDisposed) return
         if (!refreshInProgress.compareAndSet(false, true)) return
 
-        ApplicationManager.getApplication().executeOnPooledThread {
+        coroutineScope.launch(Dispatchers.IO) {
             try {
                 if (!project.isDisposed) detectNow()
             } finally {
@@ -53,6 +67,9 @@ class ServerpodProjectService(private val project: Project) {
             }
         }
     }
+
+    /** Creates work owned by a shorter-lived project UI component. */
+    internal fun createChildScope(name: String): CoroutineScope = coroutineScope.childScope(name)
 
     fun interface LayoutListener {
         fun layoutChanged(layout: ServerpodLayout?)

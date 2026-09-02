@@ -1,8 +1,15 @@
 package dev.serverpod.idea.cli
 
-import com.intellij.execution.util.ExecUtil
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 
@@ -11,25 +18,33 @@ import java.util.concurrent.ConcurrentHashMap
  * driven is visible rather than assumed.
  *
  * Versions are read by running the tool, which is far too slow for the EDT, so
- * callers detect on a background thread and read [cached] when painting.
+ * callers detect from a coroutine and read [cached] when painting.
  */
 @Service(Service.Level.APP)
-class CliVersions {
+class CliVersions(private val coroutineScope: CoroutineScope) {
 
     private val versions = ConcurrentHashMap<CliTool, String>()
 
     /** Non-blocking: the last detected version, or null if it has not been read yet. */
     fun cached(tool: CliTool): String? = versions[tool]
 
-    /** Runs the tool to read its version. Must not be called on the EDT. */
-    fun detect(tool: CliTool): String? {
+    /** Runs the tool to read its version without blocking an IDE worker. */
+    suspend fun detect(tool: CliTool): String? {
         val commandLine = ServerpodCommand.commandLine(
             tool,
             Path.of(System.getProperty("user.home")),
             listOf("--version"),
         ) ?: return null
 
-        val output = runCatching { ExecUtil.execAndGetOutput(commandLine, TIMEOUT_MS) }.getOrNull() ?: return null
+        val output = try {
+            withTimeout(TIMEOUT_MS) { captureProcess(commandLine) }
+        } catch (_: TimeoutCancellationException) {
+            return null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return null
+        }
         if (output.exitCode != 0) return null
 
         // Some SDKs report the version on stderr depending on the release.
@@ -40,7 +55,18 @@ class CliVersions {
     }
 
     /** Reads whatever is still unknown, so repeat callers do not relaunch every tool. */
-    fun detectAll() = CliTool.entries.forEach { if (cached(it) == null) detect(it) }
+    suspend fun detectAll() {
+        for (tool in CliTool.entries) {
+            currentCoroutineContext().ensureActive()
+            if (cached(tool) == null) detect(tool)
+        }
+    }
+
+    /** Starts version detection in this app service's lifecycle-bound scope. */
+    fun detectAllAsync(onDetected: suspend () -> Unit): Job = coroutineScope.launch {
+        detectAll()
+        onDetected()
+    }
 
     /** Drops the cache so the next detection re-reads, after an install or a path change. */
     fun invalidate() = versions.clear()
@@ -51,7 +77,7 @@ class CliVersions {
             .joinToString(" \u00b7 ")
 
     companion object {
-        private const val TIMEOUT_MS = 15_000
+        private const val TIMEOUT_MS = 15_000L
 
         fun getInstance(): CliVersions = service()
     }

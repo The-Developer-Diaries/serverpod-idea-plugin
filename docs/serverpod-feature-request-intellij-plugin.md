@@ -76,8 +76,9 @@ platform plugin that shells out to the CLI through `GeneralCommandLine`, with ev
 listed under Proposal is implemented and working against `serverpod_cli` 3.4.11. Layout detection,
 package-name validation, and CLI version parsing are unit tested.
 
-It declares the official Dart (`Dart`) and Flutter (`io.flutter`) plugins as required dependencies, so
-it sits on top of Google's tooling rather than alongside it and the IDE installs all three together.
+It declares the official Dart (`Dart`) plugin as its only required IDE dependency, so it builds on the
+supported Dart tooling rather than alongside it. The Flutter (`io.flutter`) IDE plugin is optional for
+Flutter-specific support in the generated app and is not a prerequisite for this plugin.
 
 Two things I would want your guidance on:
 

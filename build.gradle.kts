@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -7,7 +8,7 @@ plugins {
 }
 
 group = "dev.serverpod.idea"
-version = "0.2.2"
+version = "0.3.0"
 
 repositories {
     mavenCentral()
@@ -20,7 +21,7 @@ dependencies {
     intellijPlatform {
         intellijIdea(providers.gradleProperty("platformVersion"))
 
-        compatiblePlugins("Dart")
+        plugin("Dart:${providers.gradleProperty("dartPluginVersion").get()}")
     }
 
     // The BOM keeps the Jupiter API and the platform launcher on one version.
@@ -36,6 +37,7 @@ tasks.test {
 kotlin {
     jvmToolchain(25)
     compilerOptions {
+        jvmDefault.set(JvmDefaultMode.NO_COMPATIBILITY)
         jvmTarget.set(JvmTarget.JVM_25)
     }
 }
@@ -54,6 +56,7 @@ intellijPlatform {
 
     pluginVerification {
         ides {
+            current()
             recommended()
         }
     }

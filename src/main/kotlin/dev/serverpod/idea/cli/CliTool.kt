@@ -1,7 +1,7 @@
 package dev.serverpod.idea.cli
 
 import com.intellij.execution.configurations.PathEnvironmentVariableUtil
-import com.intellij.openapi.util.SystemInfo
+import com.intellij.util.system.OS
 import dev.serverpod.idea.settings.ServerpodSettings
 import java.nio.file.Files
 import java.nio.file.Path
@@ -15,8 +15,8 @@ import kotlin.io.path.isExecutable
 enum class CliTool(val displayName: String, private val binaryName: String) {
 
     SERVERPOD("Serverpod CLI", "serverpod") {
-        override fun fallbackCandidates(): List<Path> = listOf(
-            home().resolve(".pub-cache/bin/$executableName"),
+        override fun fallbackCandidates(): List<Path> = fallbackPaths(
+            listOf(home().resolve(".pub-cache/bin")),
         )
 
         // Serverpod version: 3.4.11
@@ -26,11 +26,18 @@ enum class CliTool(val displayName: String, private val binaryName: String) {
     DART("Dart SDK", "dart") {
         override fun fallbackCandidates(): List<Path> = buildList {
             // The Dart binary always sits next to the Flutter one.
-            PathEnvironmentVariableUtil.findInPath(if (SystemInfo.isWindows) "flutter.bat" else "flutter")
-                ?.toPath()?.parent?.let { add(it.resolve(executableName)) }
-            addAll(flutterBinCandidates(executableName))
-            add(Path.of("/opt/homebrew/bin/$executableName"))
-            add(Path.of("/usr/local/bin/$executableName"))
+            FLUTTER.executableNamesFor(OS.CURRENT)
+                .firstNotNullOfOrNull { PathEnvironmentVariableUtil.findInPath(it)?.toPath()?.parent }
+                ?.let { flutterBin -> addAll(fallbackPaths(listOf(flutterBin))) }
+            addAll(fallbackPaths(flutterBinDirectories()))
+            addAll(
+                fallbackPaths(
+                    listOf(
+                        Path.of("/opt/homebrew/bin"),
+                        Path.of("/usr/local/bin"),
+                    ),
+                ),
+            )
         }
 
         // Dart SDK version: 3.12.2 (stable) (Tue Jun 9 01:11:39 2026 -0700) on "macos_arm64"
@@ -38,27 +45,35 @@ enum class CliTool(val displayName: String, private val binaryName: String) {
     },
 
     FLUTTER("Flutter SDK", "flutter") {
-        override fun fallbackCandidates(): List<Path> = flutterBinCandidates(executableName)
+        override fun fallbackCandidates(): List<Path> = fallbackPaths(flutterBinDirectories())
 
         // Flutter 3.44.8 • channel stable • https://github.com/flutter/flutter.git
         override val versionPattern = Regex("""Flutter\s+(\S+)""")
     },
 
     DOCKER("Docker", "docker") {
-        override fun fallbackCandidates(): List<Path> = listOf(
-            home().resolve(".docker/bin/$executableName"),
-            Path.of("/usr/local/bin/$executableName"),
-            Path.of("/opt/homebrew/bin/$executableName"),
-            Path.of("/Applications/Docker.app/Contents/Resources/bin/$executableName"),
+        override fun fallbackCandidates(): List<Path> = fallbackPaths(
+            listOf(
+                home().resolve(".docker/bin"),
+                Path.of("/usr/local/bin"),
+                Path.of("/opt/homebrew/bin"),
+                Path.of("/Applications/Docker.app/Contents/Resources/bin"),
+            ),
         )
 
         // Docker version 29.6.1, build 8900f1d
         override val versionPattern = Regex("""Docker version\s+([^,\s]+)""")
     };
 
-    /** Platform-correct file name, e.g. `serverpod.bat` on Windows. */
+    /** Preferred command file name, e.g. `serverpod.bat` on Windows. */
     val executableName: String
-        get() = if (SystemInfo.isWindows) "$binaryName.bat" else binaryName
+        get() = executableNames.first()
+
+    /** Resolution order retains Windows command wrappers before native executables. */
+    internal fun executableNamesFor(os: OS): List<String> = buildList {
+        if (os == OS.Windows) add("$binaryName.bat")
+        add(os.getBinaryName(binaryName))
+    }
 
     abstract fun fallbackCandidates(): List<Path>
 
@@ -78,13 +93,18 @@ enum class CliTool(val displayName: String, private val binaryName: String) {
             if (path.isRunnable()) return path
         }
 
-        PathEnvironmentVariableUtil.findInPath(executableName)?.let { return it.toPath() }
-        if (SystemInfo.isWindows) {
-            PathEnvironmentVariableUtil.findInPath("$binaryName.exe")?.let { return it.toPath() }
-        }
+        executableNames
+            .firstNotNullOfOrNull { PathEnvironmentVariableUtil.findInPath(it)?.toPath() }
+            ?.let { return it }
 
         return fallbackCandidates().firstOrNull { it.isRunnable() }
     }
+
+    private val executableNames: List<String>
+        get() = executableNamesFor(OS.CURRENT)
+
+    protected fun fallbackPaths(directories: Iterable<Path>): List<Path> =
+        directories.flatMap { directory -> executableNames.map { directory.resolve(it) } }
 
     companion object {
         private fun home(): Path = Path.of(System.getProperty("user.home"))
@@ -92,11 +112,11 @@ enum class CliTool(val displayName: String, private val binaryName: String) {
         private fun Path.isRunnable(): Boolean = Files.isRegularFile(this) && isExecutable()
 
         /** The `bin` directories of the Flutter installs people actually use. */
-        private fun flutterBinCandidates(executableName: String): List<Path> = listOf(
-            home().resolve("fvm/default/bin/$executableName"),
-            home().resolve("flutter/bin/$executableName"),
-            home().resolve("development/flutter/bin/$executableName"),
-            home().resolve("Development/flutter/bin/$executableName"),
+        private fun flutterBinDirectories(): List<Path> = listOf(
+            home().resolve("fvm/default/bin"),
+            home().resolve("flutter/bin"),
+            home().resolve("development/flutter/bin"),
+            home().resolve("Development/flutter/bin"),
         )
     }
 }

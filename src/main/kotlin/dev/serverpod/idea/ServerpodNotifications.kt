@@ -3,7 +3,6 @@ package dev.serverpod.idea
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import dev.serverpod.idea.cli.CliTool
@@ -48,14 +47,13 @@ object ServerpodNotifications {
                 ServerpodBundle.message("notification.tool.missing.content", tool.executableName),
                 NotificationType.ERROR,
             )
-        notification.addAction(object : com.intellij.openapi.actionSystem.AnAction(
-            ServerpodBundle.message("notification.tool.missing.action")
-        ) {
-            override fun actionPerformed(e: AnActionEvent) {
+        notification.addAction(
+            NotificationAction.createSimpleExpiring(
+                ServerpodBundle.message("notification.tool.missing.action"),
+            ) {
                 ShowSettingsUtil.getInstance().showSettingsDialog(project, ServerpodConfigurable::class.java)
-                notification.expire()
             }
-        })
+        )
         notification.notify(project)
     }
 

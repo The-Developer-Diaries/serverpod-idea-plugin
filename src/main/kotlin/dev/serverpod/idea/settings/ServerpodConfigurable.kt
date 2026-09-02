@@ -1,7 +1,5 @@
 package dev.serverpod.idea.settings
 
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.ui.DialogPanel
@@ -16,12 +14,15 @@ import com.intellij.ui.dsl.builder.panel
 import dev.serverpod.idea.cli.CliTool
 import dev.serverpod.idea.cli.CliVersions
 import dev.serverpod.idea.cli.ServerpodCliInstaller
+import dev.serverpod.idea.cli.onEdt
+import kotlinx.coroutines.Job
 
 class ServerpodConfigurable : BoundConfigurable("Serverpod") {
 
     private val settings get() = ServerpodSettings.getInstance()
 
     private val fields = mutableMapOf<CliTool, Cell<TextFieldWithBrowseButton>>()
+    private var detectionJob: Job? = null
 
     override fun createPanel(): DialogPanel = panel {
         group("Executables") {
@@ -61,6 +62,8 @@ class ServerpodConfigurable : BoundConfigurable("Serverpod") {
     }.also { detectVersions() }
 
     override fun disposeUIResources() {
+        detectionJob?.cancel()
+        detectionJob = null
         fields.clear()
         super.disposeUIResources()
     }
@@ -85,13 +88,11 @@ class ServerpodConfigurable : BoundConfigurable("Serverpod") {
 
     /** Each version costs a process launch, so the labels fill in once the answers arrive. */
     private fun detectVersions() {
-        ApplicationManager.getApplication().executeOnPooledThread {
-            CliVersions.getInstance().detectAll()
-
-            ApplicationManager.getApplication().invokeLater(
-                { fields.forEach { (tool, field) -> field.comment?.text = detectedLabel(tool) } },
-                ModalityState.any(),
-            )
+        detectionJob?.cancel()
+        detectionJob = CliVersions.getInstance().detectAllAsync {
+            onEdt {
+                fields.forEach { (tool, field) -> field.comment?.text = detectedLabel(tool) }
+            }
         }
     }
 

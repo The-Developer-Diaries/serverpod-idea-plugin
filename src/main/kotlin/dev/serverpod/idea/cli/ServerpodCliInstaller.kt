@@ -1,12 +1,13 @@
 package dev.serverpod.idea.cli
 
 import com.intellij.execution.ExecutionException
-import com.intellij.execution.process.CapturingProcessHandler
-import com.intellij.execution.process.ProcessOutput
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
+import com.intellij.platform.ide.progress.ModalTaskOwner
+import com.intellij.platform.ide.progress.runWithModalProgressBlocking
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.nio.file.Path
 
 /**
@@ -47,38 +48,35 @@ object ServerpodCliInstaller {
                 "Install Dart or Flutter first, or set the SDK path in Settings | Tools | Serverpod.",
         )
 
-        var output: ProcessOutput? = null
-        var startFailure: String? = null
-
-        ProgressManager.getInstance().run(
-            object : Task.Modal(project, "Installing the Serverpod CLI", true) {
-                override fun run(indicator: ProgressIndicator) {
-                    indicator.isIndeterminate = true
-                    indicator.text = COMMAND
-
-                    output = try {
-                        CapturingProcessHandler(commandLine).runProcessWithProgressIndicator(indicator)
-                    } catch (e: ExecutionException) {
-                        startFailure = e.message ?: "The process could not be started."
-                        null
-                    }
+        val outcome = try {
+            runWithModalProgressBlocking(
+                project?.let { ModalTaskOwner.project(it) } ?: ModalTaskOwner.guess(),
+                "Installing the Serverpod CLI",
+            ) {
+                val output = captureProcess(commandLine)
+                val installed = if (output.exitCode == 0) {
+                    withContext(Dispatchers.IO) { CliTool.SERVERPOD.resolve() }
+                } else {
+                    null
                 }
+                InstallOutcome(output, installed)
             }
-        )
+        } catch (_: ProcessCanceledException) {
+            return Result.Cancelled
+        } catch (_: CancellationException) {
+            return Result.Cancelled
+        } catch (e: ExecutionException) {
+            return Result.Failed(e.message ?: "The process could not be started.")
+        }
 
-        startFailure?.let { return Result.Failed(it) }
-
-        val result = output ?: return Result.Cancelled
-        if (result.isCancelled) return Result.Cancelled
-
-        if (result.exitCode != 0) {
-            val details = result.stderr.ifBlank { result.stdout }.trim().takeLast(MAX_ERROR_CHARS)
-            return Result.Failed(details.ifBlank { "$COMMAND exited with code ${result.exitCode}." })
+        if (outcome.output.exitCode != 0) {
+            val details = outcome.output.stderr.ifBlank { outcome.output.stdout }.trim().takeLast(MAX_ERROR_CHARS)
+            return Result.Failed(details.ifBlank { "$COMMAND exited with code ${outcome.output.exitCode}." })
         }
 
         // Activation can succeed while the binary still fails to resolve, for
         // example when a custom PUB_CACHE puts it somewhere we do not search.
-        val installed = CliTool.SERVERPOD.resolve()
+        val installed = outcome.installed
             ?: return Result.Failed(
                 "$COMMAND succeeded but the executable was not found afterwards. " +
                     "Locate it manually, or set its path in Settings | Tools | Serverpod.",
@@ -86,6 +84,11 @@ object ServerpodCliInstaller {
 
         return Result.Success(installed)
     }
+
+    private data class InstallOutcome(
+        val output: CapturedProcessOutput,
+        val installed: Path?,
+    )
 
     private const val MAX_ERROR_CHARS = 1000
 }

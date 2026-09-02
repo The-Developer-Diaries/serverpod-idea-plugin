@@ -1,22 +1,24 @@
 package dev.serverpod.idea.project
 
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.WriteAction
+import com.intellij.openapi.application.edtWriteAction
+import com.intellij.openapi.application.readAction
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleManager
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.roots.ModuleRootModificationUtil
 import com.intellij.openapi.vfs.VfsUtilCore
+import com.intellij.platform.ide.progress.withBackgroundProgress
 import com.jetbrains.lang.dart.sdk.DartSdk
 import com.jetbrains.lang.dart.sdk.DartSdkLibUtil
 import com.jetbrains.lang.dart.sdk.DartSdkUtil
 import dev.serverpod.idea.ServerpodNotifications
 import dev.serverpod.idea.cli.CliTool
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -37,32 +39,44 @@ object ServerpodDartSupport {
         data object NoSdkFound : Result
     }
 
-    fun isConfigured(project: Project): Boolean =
-        ApplicationManager.getApplication().runReadAction<Boolean> { DartSdk.getDartSdk(project) != null }
+    suspend fun isConfigured(project: Project): Boolean = readAction {
+        !project.isDisposed && DartSdk.getDartSdk(project) != null
+    }
 
     /** Runs [configure] in the background and reports the outcome. */
     fun configureInBackground(project: Project, layout: ServerpodLayout) {
-        ProgressManager.getInstance().run(
-            object : Task.Backgroundable(project, "Configuring the Dart SDK", false) {
-                override fun run(indicator: ProgressIndicator) {
-                    indicator.isIndeterminate = true
+        if (project.isDisposed) return
 
-                    when (val result = configure(project, layout)) {
-                        is Result.Configured -> ServerpodNotifications.info(
-                            project,
-                            "Dart SDK configured",
-                            describe(result),
-                        )
-
-                        Result.NoSdkFound -> ServerpodNotifications.error(
-                            project,
-                            "Dart SDK not found",
-                            "Set the Dart or Flutter path in Settings | Tools | Serverpod, then try again.",
-                        )
-                    }
+        val configurationScope = ServerpodProjectService.getInstance(project)
+            .createChildScope("Configuring Dart SDK")
+        configurationScope.launch {
+            try {
+                val result = withBackgroundProgress(
+                    project,
+                    "Configuring the Dart SDK",
+                    cancellable = false,
+                ) {
+                    configure(project, layout)
                 }
+
+                if (project.isDisposed) return@launch
+                when (result) {
+                    is Result.Configured -> ServerpodNotifications.info(
+                        project,
+                        "Dart SDK configured",
+                        describe(result),
+                    )
+
+                    Result.NoSdkFound -> ServerpodNotifications.error(
+                        project,
+                        "Dart SDK not found",
+                        "Set the Dart or Flutter path in Settings | Tools | Serverpod, then try again.",
+                    )
+                }
+            } finally {
+                configurationScope.cancel()
             }
-        )
+        }
     }
 
     fun describe(result: Result.Configured): String {
@@ -72,23 +86,32 @@ object ServerpodDartSupport {
 
     /**
      * Adds the Dart SDK to the project and enables it on a module covering
-     * [layout]. Safe to call repeatedly. Must not be called on the EDT.
+     * [layout]. Safe to call repeatedly.
      */
-    fun configure(project: Project, layout: ServerpodLayout): Result {
-        val sdkHome = findSdkHome() ?: return Result.NoSdkFound
-
-        WriteAction.runAndWait<RuntimeException> {
-            if (project.isDisposed) return@runAndWait
-
-            DartSdkLibUtil.ensureDartSdkConfigured(project, sdkHome.toString())
-
-            val module = moduleFor(project, layout)
-            addContentRoot(module, layout)
-            DartSdkLibUtil.enableDartSdk(module)
+    suspend fun configure(project: Project, layout: ServerpodLayout): Result {
+        val sdkHome = withContext(Dispatchers.IO) { findSdkHome() } ?: return Result.NoSdkFound
+        val moduleFile = moduleFile(layout)
+        withContext(Dispatchers.IO) {
+            Files.createDirectories(moduleFile.parent)
         }
 
+        val configured = edtWriteAction {
+            if (project.isDisposed) return@edtWriteAction false
+            DartSdkLibUtil.ensureDartSdkConfigured(project, sdkHome.toString())
+
+            val module = moduleFor(project, layout, moduleFile)
+            addContentRoot(module, layout)
+            DartSdkLibUtil.enableDartSdk(module)
+
+            true
+        }
+        if (!configured) return Result.NoSdkFound
+
         LOG.info("Configured the Dart SDK at $sdkHome for '${project.name}'")
-        return Result.Configured(sdkHome, DartSdkUtil.getSdkVersion(sdkHome.toString()))
+        val sdkVersion = withContext(Dispatchers.IO) {
+            DartSdkUtil.getSdkVersion(sdkHome.toString())
+        }
+        return Result.Configured(sdkHome, sdkVersion)
     }
 
     /**
@@ -116,7 +139,7 @@ object ServerpodDartSupport {
      * Reuses a module that already covers the workspace, so running twice does not
      * accumulate them, but leaves any module rooted elsewhere alone.
      */
-    private fun moduleFor(project: Project, layout: ServerpodLayout): Module {
+    private fun moduleFor(project: Project, layout: ServerpodLayout, moduleFile: Path): Module {
         val manager = ModuleManager.getInstance(project)
         val rootUrl = VfsUtilCore.pathToUrl(layout.root.toString())
 
@@ -124,14 +147,14 @@ object ServerpodDartSupport {
             .firstOrNull { rootUrl in ModuleRootManager.getInstance(it).contentRootUrls }
             ?.let { return it }
 
-        val moduleFile = layout.root
+        return manager.newModule(moduleFile, GENERIC_MODULE_TYPE)
+    }
+
+    private fun moduleFile(layout: ServerpodLayout): Path =
+        layout.root
             .resolve(Project.DIRECTORY_STORE_FOLDER)
             .resolve("modules")
             .resolve("${layout.projectName}.iml")
-
-        Files.createDirectories(moduleFile.parent)
-        return manager.newModule(moduleFile, GENERIC_MODULE_TYPE)
-    }
 
     private fun addContentRoot(module: Module, layout: ServerpodLayout) {
         val rootUrl = VfsUtilCore.pathToUrl(layout.root.toString())

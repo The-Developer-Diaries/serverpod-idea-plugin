@@ -6,7 +6,7 @@ import org.jetbrains.annotations.PropertyKey
 
 private const val BUNDLE = "messages.ServerpodBundle"
 
-object ServerpodBundle : DynamicBundle(BUNDLE) {
+object ServerpodBundle : DynamicBundle(ServerpodBundle::class.java, BUNDLE) {
 
     fun message(@PropertyKey(resourceBundle = BUNDLE) key: String, vararg params: Any): @Nls String =
         getMessage(key, *params)

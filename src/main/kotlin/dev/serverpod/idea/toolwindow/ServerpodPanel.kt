@@ -1,6 +1,5 @@
 package dev.serverpod.idea.toolwindow
 
-import com.intellij.execution.util.ExecUtil
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
@@ -11,10 +10,10 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.UiDataProvider
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.JBSplitter
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.dsl.builder.panel
@@ -23,10 +22,22 @@ import dev.serverpod.idea.cli.CliTool
 import dev.serverpod.idea.cli.CliVersions
 import dev.serverpod.idea.cli.ServerpodCommand
 import dev.serverpod.idea.cli.ServerpodConsoleService
+import dev.serverpod.idea.cli.captureProcess
+import dev.serverpod.idea.cli.onEdt
 import dev.serverpod.idea.project.ServerpodLayout
 import dev.serverpod.idea.project.ServerpodProjectService
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.awt.BorderLayout
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -34,6 +45,14 @@ class ServerpodPanel(
     private val project: Project,
     parentDisposable: Disposable,
 ) : SimpleToolWindowPanel(true, true), UiDataProvider {
+
+    private val panelDisposed = AtomicBoolean(false)
+
+    private val panelScope = ServerpodProjectService.getInstance(project)
+        .createChildScope("Serverpod tool window")
+
+    @Volatile
+    private var statusJob: Job? = null
 
     // Without insets the labels sit flush against the tool window edge, out of
     // line with the toolbar above them.
@@ -64,11 +83,25 @@ class ServerpodPanel(
             .connect(parentDisposable)
             .subscribe(
                 ServerpodProjectService.TOPIC,
-                ServerpodProjectService.LayoutListener { onEdt { render(it) } },
+                ServerpodProjectService.LayoutListener { layout ->
+                    panelScope.launch {
+                        onEdt {
+                            if (!isDisposed()) render(layout)
+                        }
+                    }
+                },
             )
 
-            render(ServerpodProjectService.getInstance(project).layout())
-            refreshStatus()
+        Disposer.register(parentDisposable, object : Disposable {
+            override fun dispose() {
+                panelDisposed.set(true)
+                statusJob?.cancel()
+                panelScope.cancel()
+            }
+        })
+
+        render(ServerpodProjectService.getInstance(project).layout())
+        refreshStatus()
     }
 
     override fun uiDataSnapshot(sink: DataSink) {
@@ -76,6 +109,8 @@ class ServerpodPanel(
     }
 
     private fun render(layout: ServerpodLayout?) {
+        if (isDisposed()) return
+
         infoContainer.removeAll()
         infoContainer.add(buildInfoPanel(layout), BorderLayout.NORTH)
         infoContainer.revalidate()
@@ -118,34 +153,54 @@ class ServerpodPanel(
      * Docker and the SDK versions each cost a process launch, so both are
      * resolved off the EDT and the panel is redrawn once the answers arrive.
      */
-    private fun refreshStatus() {
-        ApplicationManager.getApplication().executeOnPooledThread {
+    private fun refreshStatus(scope: CoroutineScope = panelScope) {
+        if (isDisposed()) return
+
+        statusJob?.cancel()
+        statusJob = scope.launch {
+            if (isDisposed()) return@launch
+
             val layout = ServerpodProjectService.getInstance(project).layout()
 
-            dockerStatus = if (layout?.dockerComposeFile == null) {
-                "not applicable"
-            } else {
-                queryDockerStatus(layout)
+            val updatedDockerStatus = withContext(Dispatchers.IO) {
+                if (layout?.dockerComposeFile == null) {
+                    "not applicable"
+                } else {
+                    queryDockerStatus(layout)
+                }
             }
 
             val versions = CliVersions.getInstance()
             versions.detectAll()
-            sdkVersions = versions.summary(listOf(CliTool.DART, CliTool.FLUTTER, CliTool.SERVERPOD))
+            val updatedSdkVersions = versions.summary(listOf(CliTool.DART, CliTool.FLUTTER, CliTool.SERVERPOD))
                 .ifBlank { "could not be determined" }
 
-            onEdt { render(ServerpodProjectService.getInstance(project).layout()) }
+            onEdt {
+                if (isDisposed()) return@onEdt
+
+                dockerStatus = updatedDockerStatus
+                sdkVersions = updatedSdkVersions
+                render(ServerpodProjectService.getInstance(project).layout())
+            }
         }
     }
 
-    private fun queryDockerStatus(layout: ServerpodLayout): String {
+    private suspend fun queryDockerStatus(layout: ServerpodLayout): String {
         val commandLine = ServerpodCommand.commandLine(
             CliTool.DOCKER,
             layout.serverDir,
             listOf("compose", "ps", "--quiet"),
         ) ?: return "Docker not found"
 
-        val output = runCatching { ExecUtil.execAndGetOutput(commandLine, DOCKER_TIMEOUT_MS) }
-            .getOrElse { return "could not be determined" }
+        val output = try {
+            withTimeout(DOCKER_TIMEOUT_MS) { captureProcess(commandLine) }
+        } catch (_: TimeoutCancellationException) {
+            return "could not be determined"
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return "could not be determined"
+        }
 
         return when {
             output.exitCode != 0 -> "unavailable (is Docker running?)"
@@ -170,29 +225,35 @@ class ServerpodPanel(
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
         override fun actionPerformed(e: AnActionEvent) {
-            dockerStatus = "checking\u2026"
-            sdkVersions = "checking\u2026"
-            CliVersions.getInstance().invalidate()
+            val actionScope = e.coroutineScope
+            actionScope.launch {
+                onEdt {
+                    if (isDisposed()) return@onEdt
 
-            ApplicationManager.getApplication().executeOnPooledThread {
-                ServerpodProjectService.getInstance(project).detectNow()
-                refreshStatus()
+                    dockerStatus = "checking\u2026"
+                    sdkVersions = "checking\u2026"
+                }
+                if (isDisposed()) return@launch
+
+                CliVersions.getInstance().invalidate()
+                withContext(Dispatchers.IO) {
+                    if (!isDisposed()) {
+                        ServerpodProjectService.getInstance(project).detectNow()
+                    }
+                }
+                if (!isDisposed()) refreshStatus(actionScope)
             }
         }
-    }
-
-    private fun onEdt(block: () -> Unit) {
-        ApplicationManager.getApplication().invokeLater({
-            if (!project.isDisposed) block()
-        }, project.disposed)
     }
 
     private fun describe(root: Path, path: Path?): String =
         path?.let { runCatching { root.relativize(it).toString() }.getOrDefault(it.toString()) } ?: "\u2014"
 
+    private fun isDisposed(): Boolean = project.isDisposed || panelDisposed.get()
+
     private companion object {
         const val TOOLBAR_PLACE = "ServerpodToolWindow"
-        const val DOCKER_TIMEOUT_MS = 15_000
+        const val DOCKER_TIMEOUT_MS = 15_000L
 
         val TOOLBAR_ACTION_IDS = listOf(
             "Serverpod.RunServer",

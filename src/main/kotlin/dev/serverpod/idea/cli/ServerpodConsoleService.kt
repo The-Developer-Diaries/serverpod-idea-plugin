@@ -5,7 +5,6 @@ import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.ui.ConsoleView
 import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
@@ -65,12 +64,15 @@ class ServerpodConsoleService(private val project: Project) : Disposable {
     }
 
     private fun activateToolWindow() {
-        ApplicationManager.getApplication().invokeLater({
+        if (project.isDisposed) return
+
+        val toolWindowManager = ToolWindowManager.getInstance(project)
+        toolWindowManager.invokeLater {
             if (project.isDisposed) return@invokeLater
-            ToolWindowManager.getInstance(project)
+            toolWindowManager
                 .getToolWindow(ServerpodToolWindowFactory.ID)
                 ?.show(null)
-        }, project.disposed)
+        }
     }
 
     override fun dispose() = Unit

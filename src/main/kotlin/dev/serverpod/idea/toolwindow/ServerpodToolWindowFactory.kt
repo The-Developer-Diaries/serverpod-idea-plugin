@@ -1,12 +1,15 @@
 package dev.serverpod.idea.toolwindow
 
-import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.content.ContentFactory
 import dev.serverpod.idea.project.ServerpodProjectService
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ServerpodToolWindowFactory : ToolWindowFactory, DumbAware {
 
@@ -20,16 +23,24 @@ class ServerpodToolWindowFactory : ToolWindowFactory, DumbAware {
 
     override fun init(toolWindow: ToolWindow) {
         val project = toolWindow.project
+        val toolWindowDisposed = AtomicBoolean(false)
+        Disposer.register(toolWindow.disposable, object : Disposable {
+            override fun dispose() {
+                toolWindowDisposed.set(true)
+            }
+        })
 
         project.messageBus
             .connect(toolWindow.disposable)
             .subscribe(
                 ServerpodProjectService.TOPIC,
                 ServerpodProjectService.LayoutListener { layout ->
-                    ApplicationManager.getApplication().invokeLater(
-                        { toolWindow.isAvailable = layout != null },
-                        project.disposed,
-                    )
+                    ToolWindowManager.getInstance(project).invokeLater {
+                        if (project.isDisposed || toolWindowDisposed.get()) {
+                            return@invokeLater
+                        }
+                        toolWindow.isAvailable = layout != null
+                    }
                 },
             )
     }

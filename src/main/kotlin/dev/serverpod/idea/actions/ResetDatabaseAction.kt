@@ -9,6 +9,7 @@ import dev.serverpod.idea.cli.CliTool
 import dev.serverpod.idea.cli.ServerpodCommand
 import dev.serverpod.idea.cli.ServerpodCommandRunner
 import dev.serverpod.idea.project.ServerpodProjectService
+import kotlinx.coroutines.launch
 
 /**
  * Recreates the Compose volumes.
@@ -45,24 +46,26 @@ class ResetDatabaseAction : AnAction(), DumbAware {
 
         if (!confirmed) return
 
-        ServerpodCommandRunner.runSequence(
-            project,
-            "Resetting Serverpod containers",
-            listOf(
-                ServerpodCommand(
-                    title = "docker compose down --volumes",
-                    tool = CliTool.DOCKER,
-                    workDir = layout.serverDir,
-                    arguments = listOf("compose", "down", "--volumes"),
+        e.coroutineScope.launch {
+            ServerpodCommandRunner.runSequence(
+                project,
+                "Resetting Serverpod containers",
+                listOf(
+                    ServerpodCommand(
+                        title = "docker compose down --volumes",
+                        tool = CliTool.DOCKER,
+                        workDir = layout.serverDir,
+                        arguments = listOf("compose", "down", "--volumes"),
+                    ),
+                    ServerpodCommand(
+                        title = "docker compose up --detach",
+                        tool = CliTool.DOCKER,
+                        workDir = layout.serverDir,
+                        arguments = listOf("compose", "up", "--detach"),
+                    ),
                 ),
-                ServerpodCommand(
-                    title = "docker compose up --detach",
-                    tool = CliTool.DOCKER,
-                    workDir = layout.serverDir,
-                    arguments = listOf("compose", "up", "--detach"),
-                ),
-            ),
-            successMessage = "Recreated the containers using the passwords in config/passwords.yaml.",
-        )
+                successMessage = "Recreated the containers using the passwords in config/passwords.yaml.",
+            )
+        }
     }
 }

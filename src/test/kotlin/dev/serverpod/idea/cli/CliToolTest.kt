@@ -1,5 +1,6 @@
 package dev.serverpod.idea.cli
 
+import com.intellij.util.system.OS
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
@@ -39,6 +40,33 @@ class CliToolTest {
         """.trimIndent()
 
         assertEquals("3.44.8", versionIn(CliTool.FLUTTER, flutter))
+    }
+
+    @Test
+    fun `tries Windows batch wrappers before native binary fallbacks`() {
+        assertEquals(
+            listOf("serverpod.bat", "serverpod.exe"),
+            CliTool.SERVERPOD.executableNamesFor(OS.Windows),
+        )
+        assertEquals(
+            listOf("dart.bat", "dart.exe"),
+            CliTool.DART.executableNamesFor(OS.Windows),
+        )
+        assertEquals(
+            listOf("flutter.bat", "flutter.exe"),
+            CliTool.FLUTTER.executableNamesFor(OS.Windows),
+        )
+        assertEquals(
+            listOf("docker.bat", "docker.exe"),
+            CliTool.DOCKER.executableNamesFor(OS.Windows),
+        )
+    }
+
+    @Test
+    fun `uses unextended binary names outside Windows`() {
+        listOf(OS.macOS, OS.Linux, OS.FreeBSD, OS.Other).forEach { os ->
+            assertEquals(listOf("serverpod"), CliTool.SERVERPOD.executableNamesFor(os))
+        }
     }
 
     @Test

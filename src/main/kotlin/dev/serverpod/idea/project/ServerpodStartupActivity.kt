@@ -4,6 +4,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import dev.serverpod.idea.ServerpodNotifications
 import dev.serverpod.idea.wizard.ServerpodProjectGenerator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class ServerpodStartupActivity : ProjectActivity {
 
@@ -12,7 +14,9 @@ class ServerpodStartupActivity : ProjectActivity {
         // this is the first point at which the CLI can run against it.
         if (ServerpodProjectGenerator.runPending(project)) return
 
-        val layout = ServerpodProjectService.getInstance(project).detectNow() ?: return
+        val layout = withContext(Dispatchers.IO) {
+            ServerpodProjectService.getInstance(project).detectNow()
+        } ?: return
 
         // A workspace cloned from source, or created before the plugin handled
         // this, arrives without an SDK and so without any analysis.
