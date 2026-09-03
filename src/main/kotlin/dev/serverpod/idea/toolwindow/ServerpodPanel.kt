@@ -24,6 +24,7 @@ import dev.serverpod.idea.cli.ServerpodCommand
 import dev.serverpod.idea.cli.ServerpodConsoleService
 import dev.serverpod.idea.cli.captureProcess
 import dev.serverpod.idea.cli.onEdt
+import dev.serverpod.idea.project.ServerpodDatabaseMode
 import dev.serverpod.idea.project.ServerpodLayout
 import dev.serverpod.idea.project.ServerpodProjectService
 import kotlinx.coroutines.CancellationException
@@ -137,16 +138,30 @@ class ServerpodPanel(
                 label(sdkVersions)
                 comment("The versions the plugin runs commands with.")
             }
-        row("Containers:") {
-            label(dockerStatus)
-            comment(
-                if (layout.hasDocker) {
-                    "From <code>${layout.serverDir.fileName}/docker-compose.yaml</code>."
-                } else {
-                    "This template has no Docker Compose setup."
-                }
-            )
+        row("Database:") {
+            label(layout.databaseMode.displayName)
+            comment(databaseComment(layout))
         }
+        // An upgraded project keeps its Compose file even after moving to the
+        // embedded database, so the row follows the file and the Database row
+        // above says which one the server actually uses.
+        if (layout.hasDocker) {
+            row("Containers:") {
+                label(dockerStatus)
+                comment("From <code>${layout.serverDir.fileName}/docker-compose.yaml</code>.")
+            }
+        }
+    }
+
+    /** Says which command owns the database, since Serverpod 4 made that a choice. */
+    private fun databaseComment(layout: ServerpodLayout): String = when (layout.databaseMode) {
+        ServerpodDatabaseMode.EMBEDDED ->
+            "Run by the server itself from <code>dataPath</code>, so Docker is not needed."
+
+        ServerpodDatabaseMode.SQLITE -> "The SQLite dialect, from a file in the server package."
+        ServerpodDatabaseMode.DOCKER -> "Brought up with Docker Compose."
+        ServerpodDatabaseMode.EXTERNAL -> "Configured in <code>config/development.yaml</code>, hosted elsewhere."
+        ServerpodDatabaseMode.NONE -> "This project is configured without one."
     }
 
     /**
@@ -256,13 +271,16 @@ class ServerpodPanel(
         const val DOCKER_TIMEOUT_MS = 15_000L
 
         val TOOLBAR_ACTION_IDS = listOf(
+            "Serverpod.StartStack",
             "Serverpod.RunServer",
+            "Serverpod.StartEmbeddedDatabase",
             "Serverpod.Generate",
             "Serverpod.CreateMigration",
             "Serverpod.CreateRepairMigration",
             "Serverpod.DockerUp",
             "Serverpod.DockerDown",
             "Serverpod.ResetDatabase",
+            "Serverpod.InstallAgentTooling",
         )
     }
 }

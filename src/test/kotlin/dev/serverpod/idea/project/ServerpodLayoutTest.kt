@@ -71,6 +71,32 @@ class ServerpodLayoutTest {
     }
 
     @Test
+    fun `reads how the workspace stores its development data`() {
+        val root = workspace("embedded", withDocker = true, withMigrations = true, withFlutter = false)
+        Files.writeString(
+            root.resolve("embedded_server/config/development.yaml"),
+            "database:\n  host: localhost\n  dataPath: .serverpod/development/pgdata\n",
+        )
+
+        val layout = ServerpodLayout.detect(root)!!
+
+        assertEquals(ServerpodDatabaseMode.EMBEDDED, layout.databaseMode)
+        assertTrue(layout.hasEmbeddedDatabase)
+        // The Compose file is still there, so the Docker actions still apply.
+        assertTrue(layout.hasDocker)
+    }
+
+    @Test
+    fun `treats a workspace with no development config as having no database`() {
+        val root = workspace("plain", withDocker = false, withMigrations = false, withFlutter = false)
+
+        val layout = ServerpodLayout.detect(root)!!
+
+        assertEquals(ServerpodDatabaseMode.NONE, layout.databaseMode)
+        assertFalse(layout.hasEmbeddedDatabase)
+    }
+
+    @Test
     fun `picks up the scripts declared by the server package`() {
         val root = workspace("scripted", withDocker = false, withMigrations = false, withFlutter = false)
         Files.writeString(

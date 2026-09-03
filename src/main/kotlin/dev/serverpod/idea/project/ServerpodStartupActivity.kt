@@ -3,6 +3,8 @@ package dev.serverpod.idea.project
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import dev.serverpod.idea.ServerpodNotifications
+import dev.serverpod.idea.cli.CliTool
+import dev.serverpod.idea.cli.CliVersions
 import dev.serverpod.idea.wizard.ServerpodProjectGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,6 +19,11 @@ class ServerpodStartupActivity : ProjectActivity {
         val layout = withContext(Dispatchers.IO) {
             ServerpodProjectService.getInstance(project).detectNow()
         } ?: return
+
+        // Which commands exist depends on the installed CLI, and the menus read
+        // that from cache. Reading it now is what makes the version-gated actions
+        // appear without waiting for someone to open the tool window.
+        CliVersions.getInstance().detect(CliTool.SERVERPOD)
 
         // A workspace cloned from source, or created before the plugin handled
         // this, arrives without an SDK and so without any analysis.

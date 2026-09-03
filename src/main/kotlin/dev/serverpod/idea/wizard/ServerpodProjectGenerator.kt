@@ -12,6 +12,7 @@ import dev.serverpod.idea.cli.ServerpodCommandRunner
 import dev.serverpod.idea.cli.ServerpodConsoleService
 import dev.serverpod.idea.cli.onEdt
 import dev.serverpod.idea.project.ServerpodDartSupport
+import dev.serverpod.idea.project.ServerpodDatabaseMode
 import dev.serverpod.idea.project.ServerpodLayout
 import dev.serverpod.idea.project.ServerpodProjectService
 import dev.serverpod.idea.run.ServerpodRunConfigurations
@@ -95,11 +96,14 @@ object ServerpodProjectGenerator {
                 title = "serverpod create ${request.packageName}",
                 tool = CliTool.SERVERPOD,
                 workDir = workDir,
-                arguments = ServerpodCommand.NON_INTERACTIVE + listOf(
-                    "create",
-                    "--name", request.packageName,
-                    "--template", request.template.cliValue,
-                ),
+                arguments = ServerpodCommand.NON_INTERACTIVE + buildList {
+                    add("create")
+                    add("--name")
+                    add(request.packageName)
+                    add("--template")
+                    add(request.template.cliValue)
+                    request.features?.let { addAll(it.toArguments()) }
+                },
             )
 
             val exitCode = ServerpodCommandRunner.runSync(project, createCommand)
@@ -156,7 +160,9 @@ object ServerpodProjectGenerator {
                 ServerpodRunConfigurations.createDefault(project, layout, request.applyMigrations)
             }
 
-            if (request.startDocker && layout.dockerComposeFile != null) {
+            // A project that sets `dataPath` still ships a Compose file it never
+            // uses, so the database mode decides rather than the file's presence.
+            if (request.startDocker && layout.databaseMode == ServerpodDatabaseMode.DOCKER) {
                 ServerpodCommandRunner.runSync(
                     project,
                     ServerpodCommand(

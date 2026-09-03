@@ -28,6 +28,16 @@ class CliVersions(private val coroutineScope: CoroutineScope) {
     /** Non-blocking: the last detected version, or null if it has not been read yet. */
     fun cached(tool: CliTool): String? = versions[tool]
 
+    /** Non-blocking: the Serverpod CLI release, or null before it has been read. */
+    fun serverpodVersion(): ServerpodVersion? = ServerpodVersion.parse(cached(CliTool.SERVERPOD))
+
+    /**
+     * Whether the installed Serverpod CLI has [feature]. Non-blocking, so a
+     * caller painting a menu or a dialog never waits on a process launch; see
+     * [ServerpodFeature.isSupportedBy] for what an unread version resolves to.
+     */
+    fun supports(feature: ServerpodFeature): Boolean = feature.isSupportedBy(serverpodVersion())
+
     /** Runs the tool to read its version without blocking an IDE worker. */
     suspend fun detect(tool: CliTool): String? {
         val commandLine = ServerpodCommand.commandLine(

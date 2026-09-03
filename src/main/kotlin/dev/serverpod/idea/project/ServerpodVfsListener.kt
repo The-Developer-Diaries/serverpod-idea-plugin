@@ -92,6 +92,9 @@ class ServerpodVfsListener(
                 relativePath.endsWith("generator.yaml") ||
                 relativePath.endsWith("docker-compose.yaml") ||
                 relativePath.endsWith("docker-compose.yml") ||
+                // Adding or removing `dataPath` switches the project between the
+                // embedded database and Docker.
+                relativePath.endsWith(ServerpodDatabase.DEVELOPMENT_CONFIG) ||
                 // A direct child of the project root, so a package appearing or going away.
                 relativePath.contains('/').not()
 

@@ -1,11 +1,14 @@
 package dev.serverpod.idea.project
 
+import com.intellij.execution.ExecutionManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import dev.serverpod.idea.ServerpodNotifications
 import dev.serverpod.idea.cli.ServerpodCommand
 import dev.serverpod.idea.cli.ServerpodCommandRunner
+import dev.serverpod.idea.run.ServerpodLaunchMode
+import dev.serverpod.idea.run.ServerpodRunConfiguration
 import dev.serverpod.idea.settings.ServerpodSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -36,6 +39,10 @@ class ServerpodModelWatcher(
     fun onModelFilesChanged() {
         if (project.isDisposed || ServerpodProjectService.getInstance(project).layout() == null) return
 
+        // `serverpod start` watches the models itself and hot-reloads the result.
+        // A second generate would race it over the same output files.
+        if (isStartRunning()) return
+
         if (!ServerpodSettings.getInstance().generateOnModelChange) {
             promptOnce()
             return
@@ -43,6 +50,14 @@ class ServerpodModelWatcher(
 
         schedule()
     }
+
+    private fun isStartRunning(): Boolean = ExecutionManager.getInstance(project)
+        .getRunningDescriptors { settings ->
+            val configuration = settings.configuration as? ServerpodRunConfiguration
+            configuration != null &&
+                ServerpodLaunchMode.from(configuration.options.launchMode) == ServerpodLaunchMode.START
+        }
+        .isNotEmpty()
 
     /** Saving several models at once, or a reformat, should still produce one run. */
     private fun schedule() {

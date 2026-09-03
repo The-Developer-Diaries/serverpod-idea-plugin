@@ -32,6 +32,11 @@ class CliToolTest {
     }
 
     @Test
+    fun `reads a Serverpod pre-release, which is what the 4_0 line ships as`() {
+        assertEquals("4.0.0-rc.1", versionIn(CliTool.SERVERPOD, "Serverpod version: 4.0.0-rc.1"))
+    }
+
+    @Test
     fun `reads the version from multi-line output`() {
         val flutter = """
             Flutter 3.44.8 • channel stable • https://github.com/flutter/flutter.git

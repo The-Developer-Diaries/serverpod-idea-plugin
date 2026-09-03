@@ -7,25 +7,60 @@ what `serverpod create` produces on the command line.
 ## Features
 
 - **New Project wizard entry.** Serverpod appears in `File | New | Project` alongside the built-in
-  generators. Pick a template (`server`, `mini`, or `module`), confirm the Dart package name, and the
-  plugin runs the CLI and opens the finished workspace. An `After Creating the Project` group,
-  collapsed by default, controls whether to start the Docker containers, add a run configuration,
-  apply migrations on its first run, and open `bin/main.dart`. Your choices, including whether the
-  group is expanded, are remembered for the next project.
+  generators. Pick a template, confirm the Dart package name, and the plugin runs the CLI and opens
+  the finished workspace. Collapsed groups cover the project's features, the editors to install agent
+  skills for, and what to do once the project exists. Your choices, including which groups were
+  expanded, are remembered for the next project.
 - **Dart SDK setup.** A new project is given a module, a Dart SDK, and exclusions for build output, so
   the code is analysed the moment the workspace opens rather than after a trip through
   `Project Structure`. Opening a Serverpod workspace that has no SDK offers the same in one click.
-- **Tool window.** Shows the server, client, and Flutter packages, whether migrations exist, and
-  whether the Docker containers are running. Every command the plugin runs streams into its console.
-- **Actions** under `Tools | Serverpod` and on the tool window toolbar: generate code, create a
-  migration, create a repair migration, start or stop the Docker Compose services, and reset the
-  database containers.
+- **Tool window.** Shows the server, client, and Flutter packages, whether migrations exist, where the
+  development database lives, and whether the Docker containers are running. Every command the plugin
+  runs streams into its console.
+- **Actions** under `Tools | Serverpod` and on the tool window toolbar: start the full stack, run the
+  server, start the embedded database, generate code, create a migration, create a repair migration,
+  start or stop the Docker Compose services, reset the database containers, and install the AI agent
+  skills.
 - **Your own scripts.** Whatever the server package declares under `serverpod/scripts` in its
   `pubspec.yaml` appears under `Tools | Serverpod | Run Script`, executed with `serverpod run`.
 - **Regeneration on change.** Optionally runs `serverpod generate` after a `.spy.yaml` model is saved,
   so the generated client never lags behind the models.
-- **Run configuration.** Runs `dart run bin/main.dart` in the server package, with a run-mode selector
-  and toggles for `--apply-migrations` and `--apply-repair-migration`.
+- **Run configuration.** Runs the server in the server package, with a run-mode selector and toggles
+  for `--apply-migrations` and `--apply-repair-migration`. The `Command` field selects between
+  `serverpod start`, `dart run bin/main.dart`, and `serverpod database start`.
+
+## Serverpod versions
+
+The plugin is not pinned to a Serverpod release. It reads the version of the CLI on your machine and
+offers what that CLI can actually do, so a feature appears when you upgrade and goes away again if you
+roll back. Until the version has been read, only the surface that every supported release has is
+offered, which is why a command never fails because the plugin assumed too much.
+
+These are the parts that follow the installed CLI:
+
+| Surface | Serverpod 3.x | Serverpod 4.0 and newer |
+| --- | --- | --- |
+| Templates | `server`, `mini`, `module` | `fullstack`, `server`, `module` |
+| Create options | Implied by the template | Database, Redis, and authentication as separate choices |
+| Agent skills | — | Editors to install skills and MCP servers for |
+| Run configuration default | `dart run bin/main.dart` | `serverpod start` |
+| Database | Docker Compose | Embedded PostgreSQL, SQLite, or Docker Compose |
+
+`serverpod start` is Serverpod 4's single command for the whole stack: it generates code, brings up the
+database, runs the server with hot reload on save, and launches the Flutter apps marked `auto_launch`.
+The plugin runs it with `--no-tui`, because its interactive terminal UI needs a real terminal and the
+run console is not one. The hot reload, the code generation, and the database still work; the keyboard
+shortcuts for migrations do not, and the plugin's own migration actions cover those.
+
+A Serverpod 4 project created today runs PostgreSQL from the project directory rather than from Docker,
+so it never needs Docker Desktop. The tool window's `Database` row says which one a workspace uses,
+which matters most just after an upgrade, when a project has a `docker-compose.yaml` it no longer uses.
+`Tools | Serverpod | Start Embedded Database` runs that database on its own, which is what `psql` needs
+to connect to it.
+
+`Tools | Serverpod | Install AI Agent Skills…` runs `serverpod create .` over an existing project, which
+is how Serverpod installs its agent skills and registers its MCP servers. It rewrites each selected
+editor's own configuration file, so it names them and asks first.
 
 ## Requirements
 
@@ -51,7 +86,7 @@ plugin neither declares nor calls the Flutter plugin.
 | Serverpod CLI | Project creation, code generation, migrations | `dart pub global activate serverpod_cli` |
 | Dart SDK | Running the server | Install Dart directly or use Flutter's bundled Dart SDK |
 | Flutter SDK | The generated Flutter app | Needed only to run or develop the generated Flutter app |
-| Docker | PostgreSQL and Redis for local development | Only for the `server` template |
+| Docker | PostgreSQL and Redis for local development | Not needed on Serverpod 4, which runs PostgreSQL itself |
 
 The plugin looks for each executable in this order: the path set in `Settings | Tools | Serverpod`,
 then `PATH`, then the usual install locations (for example `~/.pub-cache/bin/serverpod`). The fallback
@@ -121,7 +156,7 @@ The installable ZIP lands in `build/distributions/`. Install it with
 ## Development
 
 ```bash
-./gradlew test      # layout detection, script parsing, package naming, version parsing
+./gradlew test      # version gating, layout and database detection, command arguments, package naming
 ./gradlew runIde    # launches a sandbox IDE with the plugin loaded
 ```
 
@@ -153,6 +188,10 @@ create a nested folder — generation happens in a scratch directory beside the 
 moved in, and dependencies are re-resolved so `.dart_tool` points at the final location.
 
 ## "Password authentication failed" after recreating a project
+
+This applies to a project using Docker. A project on Serverpod 4's embedded PostgreSQL keeps its data
+in the directory named by `dataPath`, so deleting that directory is the equivalent reset.
+
 
 PostgreSQL applies `POSTGRES_PASSWORD` only when it initialises an empty data directory. If you
 previously had a project with the same name, `docker compose up` reuses the old named volume, so the

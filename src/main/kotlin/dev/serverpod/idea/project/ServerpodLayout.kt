@@ -8,8 +8,8 @@ import kotlin.io.path.name
 
 /**
  * The three-package workspace that `serverpod create` produces. Only the server
- * package is guaranteed to exist; the `mini` and `module` templates omit some of
- * the others.
+ * package is guaranteed to exist; the server-only and `module` templates omit
+ * some of the others.
  */
 data class ServerpodLayout(
     val projectName: String,
@@ -21,10 +21,15 @@ data class ServerpodLayout(
     val migrationsDir: Path?,
     /** Script names from the server package's `serverpod/scripts` section. */
     val scripts: List<String>,
+    /** Where the development database lives, read from `config/development.yaml`. */
+    val databaseMode: ServerpodDatabaseMode,
 ) {
     val hasDocker: Boolean get() = dockerComposeFile != null
 
     val hasMigrations: Boolean get() = migrationsDir != null
+
+    /** Whether `serverpod database start` has a cluster to run. */
+    val hasEmbeddedDatabase: Boolean get() = databaseMode == ServerpodDatabaseMode.EMBEDDED
 
     val serverEntryPoint: Path get() = serverDir.resolve("bin/main.dart")
 
@@ -59,6 +64,9 @@ data class ServerpodLayout(
         private fun from(serverDir: Path): ServerpodLayout {
             val projectName = serverDir.name.removeSuffix(SERVER_SUFFIX)
             val root = serverDir.parent ?: serverDir
+            val dockerComposeFile = listOf("docker-compose.yaml", "docker-compose.yml")
+                .map { serverDir.resolve(it) }
+                .firstOrNull { it.isRegularFile() }
 
             return ServerpodLayout(
                 projectName = projectName,
@@ -66,11 +74,10 @@ data class ServerpodLayout(
                 serverDir = serverDir,
                 clientDir = root.resolve("${projectName}_client").takeIf { it.isDirectory() },
                 flutterDir = root.resolve("${projectName}_flutter").takeIf { it.isDirectory() },
-                dockerComposeFile = listOf("docker-compose.yaml", "docker-compose.yml")
-                    .map { serverDir.resolve(it) }
-                    .firstOrNull { it.isRegularFile() },
+                dockerComposeFile = dockerComposeFile,
                 migrationsDir = serverDir.resolve("migrations").takeIf { it.isDirectory() },
                 scripts = ServerpodScripts.namesIn(serverDir.resolve("pubspec.yaml")),
+                databaseMode = ServerpodDatabase.modeOf(serverDir, dockerComposeFile),
             )
         }
 

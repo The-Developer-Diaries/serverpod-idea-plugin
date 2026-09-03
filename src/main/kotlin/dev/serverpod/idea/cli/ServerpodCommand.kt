@@ -34,6 +34,19 @@ data class ServerpodCommand(
             arguments = NON_INTERACTIVE + listOf("run", script),
         )
 
+        /**
+         * Re-runs `serverpod create` over an existing project, which is how
+         * Serverpod 4 installs agent skills and registers its MCP servers for the
+         * chosen editors. Source files are left alone; editor config files are not.
+         */
+        fun installAgentTooling(layout: ServerpodLayout, ides: List<ServerpodIde>) = ServerpodCommand(
+            title = "serverpod create .",
+            tool = CliTool.SERVERPOD,
+            workDir = layout.root,
+            arguments = NON_INTERACTIVE + listOf("create", ".") + ides.flatMap { listOf("--ide", it.cliValue) },
+            successMessage = "Installed the Serverpod agent skills and MCP servers.",
+        )
+
         fun commandLine(tool: CliTool, workDir: Path, arguments: List<String>): GeneralCommandLine? {
             val executable = tool.resolve() ?: return null
 

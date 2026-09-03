@@ -6,14 +6,18 @@
     <description><![CDATA[
         Create and manage <a href="https://serverpod.dev">Serverpod</a> projects from IntelliJ IDEA.
         <ul>
-            <li>Create a Serverpod workspace from the New Project wizard, choosing between the
-                <code>server</code>, <code>mini</code>, and <code>module</code> templates.</li>
+            <li>Create a Serverpod workspace from the New Project wizard, with the templates and
+                options the installed CLI actually offers.</li>
             <li>Run <code>serverpod generate</code> and create database migrations without leaving the IDE.</li>
-            <li>Start and stop the bundled PostgreSQL and Redis containers with Docker Compose.</li>
-            <li>Launch the server through a dedicated run configuration with run mode and migration options.</li>
+            <li>Launch the server through a dedicated run configuration, either with Serverpod 4's
+                hot-reloading <code>serverpod start</code> or by running the entry point directly.</li>
+            <li>Run Serverpod 4's embedded PostgreSQL, or start and stop the Docker Compose
+                containers on projects that use them.</li>
+            <li>Install Serverpod 4's AI agent skills and MCP servers for your editors.</li>
             <li>See the state of the whole workspace in the Serverpod tool window.</li>
         </ul>
-        Requires the Serverpod CLI to be installed locally.
+        Requires the Serverpod CLI to be installed locally. Nothing is pinned to a Serverpod
+        version: features appear as the CLI on your machine gains them.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -54,11 +58,23 @@
                popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
 
+            <action id="Serverpod.StartStack"
+                    class="dev.serverpod.idea.actions.StartStackAction"
+                    text="Start Full Stack"
+                    description="Run serverpod start to bring up the database, server, and Flutter apps with hot reload"
+                    icon="AllIcons.Actions.RunAll"/>
+
             <action id="Serverpod.RunServer"
                     class="dev.serverpod.idea.actions.RunServerAction"
                     text="Run Server"
                     description="Start the Serverpod server using its run configuration"
                     icon="AllIcons.RunConfigurations.TestState.Run"/>
+
+            <action id="Serverpod.StartEmbeddedDatabase"
+                    class="dev.serverpod.idea.actions.StartEmbeddedDatabaseAction"
+                    text="Start Embedded Database"
+                    description="Run serverpod database start for a project configured with dataPath"
+                    icon="AllIcons.Actions.Execute"/>
 
             <group id="Serverpod.Scripts"
                    class="dev.serverpod.idea.actions.ServerpodScriptsActionGroup"
@@ -107,6 +123,14 @@
                     text="Reset Database Containers…"
                     description="Delete the database volumes and recreate the containers, discarding all local data"
                     icon="AllIcons.Actions.Restart"/>
+
+            <separator/>
+
+            <action id="Serverpod.InstallAgentTooling"
+                    class="dev.serverpod.idea.actions.InstallAgentToolingAction"
+                    text="Install AI Agent Skills…"
+                    description="Install the Serverpod agent skills and register its MCP servers for your editors"
+                    icon="AllIcons.Actions.IntentionBulbGrey"/>
         </group>
     </actions>
 
